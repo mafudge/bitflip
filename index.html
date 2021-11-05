@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitplip IoT Client</title>
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css" rel="stylesheet" />
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" rel="stylesheet" />
+    <!-- MDB -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/mdb-ui-kit/3.6.0/mdb.min.css" rel="stylesheet" />
+</head>
+
+<body>
+    <div class="container">
+        <div class="row gx-lg-3">
+            <!--Grid column-->
+            <div class="col-lg-3 col-md-6 mb-4">
+
+                <!-- Card -->
+                <div class="card border border-primary">
+
+                    <div class="card-header bg-white py-3">
+                        <h1 class="mb-0">BitFlip <a href="about.html" target="_about" class="link link-primary"><i class="far fa-question-circle"></i></a></h1>
+                        <p class="text-uppercase small mb-2"><strong>Connection</strong></p>
+                        <code>
+                            host:<span id=mqtt_host></span><br>
+                            port:<span id=mqtt_port></span><br>
+                            clientid:<span id=mqtt_clientid></span><br>
+                            topic:<span id=mqtt_topic></span><br>
+                        </code>
+                    </div>
+
+                    <div class="card-body">
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item">
+                                <p class="text-uppercase small mb-2"><strong>Leds:</strong></p>
+                                <span id="leds-area"></span>
+                            </li>
+                            <li class="list-group-item">
+                                <p class="text-uppercase small mb-2"><strong>Buttons:</strong></p>
+                                <span id="buttons-area">
+                                </span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div class="card-footer bg-white py-3">
+                    </div>
+
+                </div>
+                <!-- Card -->
+
+            </div>
+            <!--Grid column-->
+
+        </div>
+    </div>
+    <hr>
+    <p class="text-uppercase small mb-2"><strong>Logs:</strong></p>
+    <code>
+    <span id="logs-area">
+
+    </span>
+    </code>
+
+    <!-- JavaScript Area -->
+    <script type="text/javascript" src="js/hash.js"></script>
+    <!-- MDB -->
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mdb-ui-kit/3.6.0/mdb.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/URI.js/1.19.7/URI.min.js"
+        integrity="sha512-NhN7q/gDer3nrBNMxW5MSHNAxDMwKD4AvVj/ikQnrp0U2+PHJsxgHoE72ugplv1RWFwLADBiBXEPf/hVDXefpg=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"
+        type="text/javascript"></script>
+    <script type="text/javascript" language="javascript">
+        (function () {
+
+            function log(text) {
+                //get current date and time in yyyy-mm-dd hh:mm:ss format
+                var date = new Date();
+                text = `${date.toLocaleString()} - ${text}`;
+                logs = document.getElementById("logs-area");
+                logs.innerHTML = text + "<br>" + logs.innerHTML;
+            }
+
+            function makeId(text) {
+                return text.replace(/\s+/g, '-').toLowerCase();
+            }
+
+            function getColor(ledname) {
+                if (ledname == "white") return "bg-dark";
+                else if (ledname == "red") return "bg-danger";
+                else if (ledname == "blue") return "bg-primary";
+                else if (ledname == "green") return "bg-success";
+                else if (ledname == "purple") return "bg-secondary";
+                else if (ledname == "yellow") return "bg-warning";
+                else if (ledname == "cyan") return "bg-info";
+                else return "bg-light";
+            }
+
+
+            // MAIN
+            var host = "broker.mqttdashboard.com";
+            var websocket = 8000;
+            var uri = URI.parse(window.location.href);
+            var clientId = hashString(`${uri.query}|${Date.now()}`);
+            var query = URI.parseQuery(uri.query);
+            var topic = `/bitflip/${query.topic ?? hashString(uri.query ?? "")}`;
+
+            // building the UI manually for now
+            var buttonsList = [];
+            var ledsList = [];
+            if (query.btn !== undefined) {
+                if (!Array.isArray(query.btn)) query.btn = [query.btn];
+                query.btn.forEach(element => {
+                    buttonsList.push({ 'name': element, 'id': makeId(element) });
+                });
+            }
+            if (query.led !== undefined) {
+                if (!Array.isArray(query.led)) query.led = [query.led];
+                query.led.forEach(element => {
+                    ledsList.push({ 'name': element, 'id': makeId(element), 'state': "OFF", 'color': getColor(element) });
+                });
+            }
+
+            document.getElementById("mqtt_host").innerHTML = host;
+            document.getElementById("mqtt_port").innerHTML = websocket;
+            document.getElementById("mqtt_clientid").innerHTML = clientId;
+            document.getElementById("mqtt_topic").innerHTML = topic;
+
+            console.log({ uri });
+            console.log({ clientId });
+            console.log({ query });
+            console.log({ buttonsList });
+            console.log({ ledsList });
+
+            // Create UI
+            var buttonsArea = document.getElementById("buttons-area");
+            var ledsArea = document.getElementById("leds-area");
+            buttonsList.forEach(button => {
+                buttonsArea.innerHTML += `<button id=\"${button.id}\" type=\"button\" class=\"btn btn-light\">${button.name}</button>`;
+            });
+            buttonsList.forEach(button => {
+                document.getElementById(button.id).onclick = clickHandler;
+            });
+            ledsList.forEach(led => {
+                if (led.state == "ON")
+                    ledsArea.innerHTML += `<span id=\"${led.id}\" class="badge rounded-pill ${led.color}"<b>ON</b></span>`;
+                else
+                    ledsArea.innerHTML += `<span id=\"${led.id}\" class="badge rounded-pill ${led.color}">OFF</span>`;
+            });
+
+            //////////// MQTT
+            var client = new Paho.MQTT.Client(host, websocket, clientId);
+
+            client.onConnectionLost = function (responseObject) {
+                console.log("Connection Lost: " + responseObject.errorMessage);
+                log(`ERROR: Connection Lost: ${responseObject.errorMessage}`);
+            };
+
+            client.onMessageArrived = function (message) {
+                try {
+                    log(`RECD: ${message.payloadString}`);
+                    var payload = JSON.parse(message.payloadString);
+                    var element = document.getElementById(payload.led);
+                    var state = payload.state.toUpperCase() == "ON" ? "ON" : "OFF";
+                    if (element !== undefined) element.innerHTML = state;
+                    log(`UPDATE: ${payload.led} LED set to ${state}`);
+
+                } catch (error) {
+                    log(`INFO: ${message.payloadString} is not actionable.`)
+                }
+            };
+
+            var options = {
+                timeout: 3,
+                onSuccess: function () {
+                    log(`CONNECT: mqtt connected`);
+                    // Connection succeeded; subscribe to our topic, you can add multile lines of these
+                    client.subscribe(topic, { qos: 1 });
+
+                },
+                onFailure: function (message) {
+                    console.log("Connection failed: " + message.errorMessage);
+                }
+            };
+
+            function clickHandler(e) {
+                //alert(e.target.id);
+                var payload = JSON.stringify({ 'click': e.target.id });
+                message = new Paho.MQTT.Message(payload);
+                message.destinationName = topic;
+                client.send(message);
+                log(`SENT: ${payload}`);
+
+            }
+
+
+            client.connect(options);
+
+        })();
+    </script>
+
+</body>
+
+</html>
